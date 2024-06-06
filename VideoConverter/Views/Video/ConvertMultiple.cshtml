@@ -1,11 +1,15 @@
 ﻿@model UploadFileVm
+@{
+   var title = Model.MergeFiles ? "Convert and Merge Video" : "Convert Video";
+}
 
-<h2>Convert Video</h2>
+<h2>@title</h2>
 
 <form asp-action="ConvertMultiple" asp-controller="Video" method="post" enctype="multipart/form-data">
     <div class="form-group">
         <label for="file">Select Video File</label>
         <input type="file" class="form-control-file" id="file" name="Files" multiple>
+        <input type="hidden" asp-for="MergeFiles" />
     </div>
     <button type="submit" class="btn btn-primary">Convert to MP4</button>
 </form>

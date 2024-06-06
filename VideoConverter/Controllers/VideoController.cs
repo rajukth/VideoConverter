@@ -33,7 +33,11 @@ namespace VideoConverter.Controllers
         }
         public IActionResult ConvertMultiple() {
             return View();
-
+        } 
+        public IActionResult ConvertAndMerge() {
+            var vm = new UploadFileVm();
+            vm.MergeFiles = true;
+            return View(vm);
         }
         [HttpPost]
         public async Task<IActionResult> ConvertMultiple([FromForm]UploadFileVm vm)
@@ -43,14 +47,18 @@ namespace VideoConverter.Controllers
                 return BadRequest("No files uploaded");
             }
 
+            if (vm.MergeFiles) {
+                return await ConvertAndMerge(vm);
+            }
+
             var convertedFiles = new List<string>();
             var uploadsFolder = Path.Combine("wwwroot", "uploads");
             var convertedFolder = Path.Combine("wwwroot", "converted");
             Directory.CreateDirectory(uploadsFolder);
             Directory.CreateDirectory(convertedFolder);
-
+            var fileAddition = DateTime.Now.ToBinary;
             // Create a ZIP archive of the converted files
-            var zipFilePath = Path.Combine("wwwroot", "converted", "ConvertedVideos.zip");
+            var zipFilePath = Path.Combine("wwwroot", "converted", $"ConvertedVideos{fileAddition}.zip");
 
             try
             {
@@ -109,7 +117,7 @@ namespace VideoConverter.Controllers
                 }
                 memory.Position = 0;
                 var contentType = "application/zip";
-                var fileName = "ConvertedVideos.zip";
+                var fileName = $"ConvertedVideos{fileAddition}.zip";
 
                
                 return File(memory, contentType, fileName);
@@ -192,6 +200,147 @@ namespace VideoConverter.Controllers
                 return StatusCode(500, $"Error during conversion: {ex.Message}");
             }
            
+        }
+        [HttpPost]
+        public async Task<IActionResult> ConvertAndMerge(UploadFileVm vm) {
+
+            if (vm.File == null || vm.File2== null)
+            {
+                return BadRequest("No files uploaded");
+            }
+
+            var convertedFiles = new List<string>();
+            var uploadsFolder = Path.Combine("wwwroot", "uploads");
+            var convertedFolder = Path.Combine("wwwroot", "converted");
+            Directory.CreateDirectory(uploadsFolder);
+            Directory.CreateDirectory(convertedFolder);
+
+
+            try
+            {
+                foreach (var file in vm.Files)
+                {
+                    if (file.Length == 0)
+                        continue;
+
+                    var uploadFilePath = Path.Combine(uploadsFolder, file.FileName);
+
+                    // Save the uploaded file
+                    using (var fileStream = new FileStream(uploadFilePath, FileMode.Create))
+                    {
+                        await file.CopyToAsync(fileStream);
+                    }
+
+                    // Define the output path for the converted video
+                    var convertedFileName = $"{Path.GetFileNameWithoutExtension(file.FileName)}.mp4";
+                    var convertedFilePath = Path.Combine(convertedFolder, convertedFileName);
+
+                    // Convert the video to MP4 using Xabe.FFmpeg
+                    var conversion = await FFmpeg.Conversions.FromSnippet.ToMp4(uploadFilePath, convertedFilePath);
+
+                    using (var fileStream = new FileStream(conversion.OutputFilePath, FileMode.Create))
+                    {
+                        await file.CopyToAsync(fileStream);
+                    }
+                    // Check if the conversion was successful
+                    if (!System.IO.File.Exists(convertedFilePath))
+                    {
+                        throw new FileNotFoundException($"Converted file not found: {convertedFilePath}");
+                    }
+
+
+                    convertedFiles.Add(convertedFilePath);
+
+                    // Delete the uploaded file
+                    if (System.IO.File.Exists(uploadFilePath))
+                    {
+                        System.IO.File.Delete(uploadFilePath);
+                    }
+                }
+
+                if (vm.MergeFiles && convertedFiles.Count > 1)
+                {
+                    // Merge files if the checkbox is ticked
+                    var mergedFilePath = Path.Combine(convertedFolder, "MergedVideo.mp4");
+
+                    var conversion = FFmpeg.Conversions.New();
+                    foreach (var file in convertedFiles)
+                    {
+                        var mediaInfo = await FFmpeg.GetMediaInfo(file);
+                        conversion.AddStream(mediaInfo.Streams);
+                    }
+                    await conversion.SetOutput(mergedFilePath).Start();
+
+                    // Clean up individual converted files
+                    foreach (var file in convertedFiles)
+                    {
+                        if (System.IO.File.Exists(file))
+                        {
+                            System.IO.File.Delete(file);
+                        }
+                    }
+
+                    // Return the merged file for download
+                    var memory = new MemoryStream();
+                    using (var stream = new FileStream(mergedFilePath, FileMode.Open))
+                    {
+                        await stream.CopyToAsync(memory);
+                    }
+                    memory.Position = 0;
+                    var contentType = "application/octet-stream";
+                    var fileName = "MergedVideo.mp4";
+
+                    if (System.IO.File.Exists(mergedFilePath))
+                    {
+                        System.IO.File.Delete(mergedFilePath);
+                    }
+
+                    return File(memory, contentType, fileName);
+                }
+                else
+                {
+                    // Create a ZIP archive of the converted files
+                    var zipFilePath = Path.Combine(convertedFolder, "ConvertedVideos.zip");
+                    using (var zip = ZipFile.Open(zipFilePath, ZipArchiveMode.Create))
+                    {
+                        foreach (var convertedFile in convertedFiles)
+                        {
+                            zip.CreateEntryFromFile(convertedFile, Path.GetFileName(convertedFile));
+                        }
+                    }
+
+                    // Return the ZIP file for download
+                    var memory = new MemoryStream();
+                    using (var stream = new FileStream(zipFilePath, FileMode.Open))
+                    {
+                        await stream.CopyToAsync(memory);
+                    }
+                    memory.Position = 0;
+                    var contentType = "application/zip";
+                    var fileName = "ConvertedVideos.zip";
+
+                    // Clean up the converted files and the ZIP file
+                    foreach (var file in convertedFiles)
+                    {
+                        if (System.IO.File.Exists(file))
+                        {
+                            System.IO.File.Delete(file);
+                        }
+                    }
+
+                    if (System.IO.File.Exists(zipFilePath))
+                    {
+                        System.IO.File.Delete(zipFilePath);
+                    }
+
+                    return File(memory, contentType, fileName);
+                }
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, $"Error during conversion: {ex.Message}");
+            }
+        
         }
     }
 }
