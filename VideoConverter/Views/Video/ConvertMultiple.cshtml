@@ -1,6 +1,6 @@
 ﻿@model UploadFileVm
 @{
-   var title = Model.MergeFiles ? "Convert and Merge Video" : "Convert Video";
+   var title = "Convert Video";
 }
 
 <h2>@title</h2>
@@ -13,3 +13,23 @@
     </div>
     <button type="submit" class="btn btn-primary">Convert to MP4</button>
 </form>
+
+<div id="status"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/microsoft-signalr/3.1.8/signalr.min.js"></script>
+<script type="text/javascript">
+    const connection = new signalR.HubConnectionBuilder()
+        .withUrl("/videoConverterHub")
+        .build();
+
+    connection.on("ReceiveMessage", function (message) {
+        const statusDiv = document.getElementById("status");
+        const statusMessage = document.createElement("p");
+        statusMessage.textContent = message;
+        statusDiv.appendChild(statusMessage);
+    });
+
+    connection.start().catch(function (err) {
+        return console.error(err.toString());
+    });
+</script>
