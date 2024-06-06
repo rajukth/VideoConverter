@@ -361,3 +361,6 @@ MigrationBackup/
 
 # Fody - auto-generated XML schema
 FodyWeavers.xsd
+/VideoConverter/ffmpeg-binaries/ffmpeg.exe
+/VideoConverter/ffmpeg-binaries/ffprobe.exe
+/VideoConverter/ffmpeg-binaries/version.json
