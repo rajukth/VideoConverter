@@ -3,7 +3,9 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.9.34728.123
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "VideoConverter", "VideoConverter\VideoConverter.csproj", "{7527900F-D0AE-4C13-B6A4-ED3B0842F272}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "VideoConverter", "VideoConverter\VideoConverter.csproj", "{7527900F-D0AE-4C13-B6A4-ED3B0842F272}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "VobConverter", "..\Converter\VobConverter\VobConverter.csproj", "{2DD1465F-DCD7-4CE9-BE8A-36D71457493D}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -15,6 +17,10 @@ Global
 		{7527900F-D0AE-4C13-B6A4-ED3B0842F272}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{7527900F-D0AE-4C13-B6A4-ED3B0842F272}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{7527900F-D0AE-4C13-B6A4-ED3B0842F272}.Release|Any CPU.Build.0 = Release|Any CPU
+		{2DD1465F-DCD7-4CE9-BE8A-36D71457493D}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{2DD1465F-DCD7-4CE9-BE8A-36D71457493D}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{2DD1465F-DCD7-4CE9-BE8A-36D71457493D}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{2DD1465F-DCD7-4CE9-BE8A-36D71457493D}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

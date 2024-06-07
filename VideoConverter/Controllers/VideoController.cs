@@ -1,5 +1,7 @@
-﻿using Microsoft.AspNetCore.Mvc;
+﻿using Microsoft.AspNetCore.Components.Forms;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.SignalR;
+using System.Diagnostics;
 using System.IO.Compression;
 using VideoConverter.Hubs;
 using VideoConverter.Models;
@@ -155,7 +157,7 @@ namespace VideoConverter.Controllers
         [HttpPost]
         public async Task<IActionResult> ConvertAndMerge(UploadFileVm vm) {
 
-            if (vm.File == null || vm.File2== null)
+            if (vm.File == null || vm.File1== null)
             {
                 return BadRequest("No files uploaded");
             }
@@ -163,17 +165,16 @@ namespace VideoConverter.Controllers
             var convertedFiles = new List<string>();     
             try
             {
-                foreach (var file in vm.Files)
-                {
-                    if (file.Length == 0)
-                        continue;
 
-                    convertedFiles.Add(await ConvertFile(file));    
-                }
+                    convertedFiles.Add(await ConvertFile(vm.File));    
+                    convertedFiles.Add(await ConvertFile(vm.File1));    
+                if(vm.File2!=null)
+                    convertedFiles.Add(await ConvertFile(vm.File2));
+
 
                 if (vm.MergeFiles && convertedFiles.Count > 1)
                 {
-                   return await MergeFile(convertedFiles);  
+                   return await MergeFiles(convertedFiles);  
                 }
                 else
                 {
@@ -314,6 +315,75 @@ namespace VideoConverter.Controllers
 
             return File(memory, contentType, fileName);
 
+        }
+
+        private async Task<IActionResult> MergeFiles(List<string> convertedFiles)
+        {
+            try
+            {
+                var convertedFolder = Path.Combine("wwwroot", "converted");
+                var conversion = FFmpeg.Conversions.New();
+                var stopwatch = new Stopwatch();
+                stopwatch.Start();
+
+                foreach (var inputFile in convertedFiles)
+                {
+                    conversion.AddParameter($"-i \"{inputFile}\"");
+                }
+
+                conversion.AddParameter($"-filter_complex \"concat=n={convertedFiles.Count}:v=1:a=1 [v] [a]\" -map \"[v]\" -map \"[a]\" \"{convertedFolder}\"");
+
+                // Subscribe to the OnProgress event
+                conversion.OnProgress += (sender, args) =>
+                {
+                    double percentComplete = args.Percent;
+                    TimeSpan elapsed = stopwatch.Elapsed;
+                    TimeSpan estimatedTotal = TimeSpan.FromSeconds(elapsed.TotalSeconds / percentComplete * 100);
+                    TimeSpan estimatedRemaining = estimatedTotal - elapsed;
+
+                    Console.WriteLine($"Merging files: [{args.Duration} / {args.TotalLength}] {args.Percent}% - Estimated time remaining: {estimatedRemaining:hh\\:mm\\:ss}");
+                };
+
+                // Subscribe to the OnDataReceived event to get FFmpeg output messages
+                conversion.OnDataReceived += (sender, args) =>
+                {
+                    Console.WriteLine(args.Data);
+                };
+
+                // Start the merging process
+                await conversion.Start();
+                stopwatch.Stop();
+
+                // Clean up individual converted files
+                foreach (var file in convertedFiles)
+                {
+                    if (System.IO.File.Exists(file))
+                    {
+                        DeleteFile(file);
+                    }
+                }
+
+                // Return the merged file for download
+                var memory = new MemoryStream();
+                using (var stream = new FileStream(conversion.OutputFilePath, FileMode.Open))
+                {
+                    await stream.CopyToAsync(memory);
+                }
+                memory.Position = 0;
+                var contentType = "application/octet-stream";
+                var fileName = "MergedVideo.mp4";
+
+                if (System.IO.File.Exists(conversion.OutputFilePath))
+                {
+                    DeleteFile(conversion.OutputFilePath);
+                }
+
+                return File(memory, contentType, fileName);
+            }
+            catch (Exception ex)
+            {
+                throw new Exception($"An error occurred during merging: {ex.Message}");
+            }
         }
     }
 }

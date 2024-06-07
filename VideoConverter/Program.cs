@@ -5,7 +5,7 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.Configure<FormOptions>(options =>
 {
-    options.MultipartBodyLengthLimit = 3221225472; // 3 GB
+    options.MultipartBodyLengthLimit = 2221225472; // 2 GB
 });
 
 // Add services to the container.
