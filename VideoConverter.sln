@@ -4,6 +4,9 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 VisualStudioVersion = 17.9.34728.123
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "VideoConverter", "VideoConverter\VideoConverter.csproj", "{7527900F-D0AE-4C13-B6A4-ED3B0842F272}"
+	ProjectSection(ProjectDependencies) = postProject
+		{2DD1465F-DCD7-4CE9-BE8A-36D71457493D} = {2DD1465F-DCD7-4CE9-BE8A-36D71457493D}
+	EndProjectSection
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "VobConverter", "..\Converter\VobConverter\VobConverter.csproj", "{2DD1465F-DCD7-4CE9-BE8A-36D71457493D}"
 EndProject
