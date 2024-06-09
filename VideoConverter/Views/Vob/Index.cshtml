@@ -1,0 +1,58 @@
+﻿<div class="card">
+<form id="videoForm" enctype="multipart/form-data">
+    <input type="file" name="files" multiple />
+    <select name="action">
+        <option value="ConvertOnly">Convert Only</option>
+        <option value="ConvertAndMerge">Convert and Merge</option>
+        <option value="MergeOnly">Merge Only</option>
+    </select>
+    <button type="submit">Upload</button>
+</form>
+    </div>
+<div id="progress" style="max-height:100vh; overflow:auto;"></div>
+<script>
+    $(document).ready(function () {
+        $('#videoForm').submit(function (e) {
+            e.preventDefault();
+            var p = $('<p>').html("Uploading ......."); // Create a new paragraph element with the progress text
+            $('#progress').prepend(p)
+            var formData = new FormData(this);
+            $.ajax({
+                url: '/Vob/ProcessVideos',
+                type: 'POST',
+                data: formData,
+                contentType: false,
+                processData: false,
+                success: function (response) {
+                    checkProgress(response.taskId);
+                }
+            });
+        });
+    });
+
+    function checkProgress(taskId) {
+        var interval = setInterval(function () {
+            $.get('/Vob/GetProgress', { taskId: taskId }, function (data) {
+                var p = $('<p>').html(data.progressText); // Create a new paragraph element with the progress text
+                $('#progress').prepend(p); // Append the paragraph element to the progress div
+                if (data.isCompleted) {
+                    $('#progress').prepend(p);
+
+                    if (data.zipFilePath) {
+                        // Create a hidden link element and trigger the download for the zip file
+                        var zipLink = $('<a></a>').attr('href', data.zipFilePath).attr('download', '').appendTo('body');
+                        zipLink[0].click();
+                        zipLink.remove();
+                    }
+                    if (data.mergedFilePath) {
+                        // Create a hidden link element and trigger the download for the merged file
+                        var mergedLink = $('<a></a>').attr('href', data.mergedFilePath).attr('download', '').appendTo('body');
+                        mergedLink[0].click();
+                        mergedLink.remove();
+                    }
+                    clearInterval(interval);
+                }
+            });
+        }, 1000);
+    }
+</script>

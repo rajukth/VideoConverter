@@ -16,24 +16,10 @@ namespace VideoConverter.Controllers
         public IHubContext<VideoConverterHub> _hubContext { get; }
 
         public VideoController(IHubContext<VideoConverterHub> hubContext)
-        {
-            // Set the path to store FFmpeg binaries. This path should be writable by the application.
-            string ffmpegPath = Path.Combine(Directory.GetCurrentDirectory(), "ffmpeg-binaries");
-            FFmpeg.SetExecutablesPath(ffmpegPath);
-
-            // Download FFmpeg if not already present
-            EnsureFFmpegBinaries().GetAwaiter().GetResult();
+        { 
             _hubContext = hubContext;
         }
-        private async Task EnsureFFmpegBinaries()
-        {
-            var ffmpegPath = Path.Combine(Directory.GetCurrentDirectory(), "ffmpeg-binaries");
-
-            if (!Directory.Exists(ffmpegPath) || Directory.GetFiles(ffmpegPath).Length == 0)
-            {
-                await FFmpegDownloader.GetLatestVersion(FFmpegVersion.Official, ffmpegPath);
-            }
-        }
+       
         public IActionResult Index()
         {
             return View();

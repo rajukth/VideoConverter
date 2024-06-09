@@ -13,14 +13,19 @@ class Program
     {
        
 
-        string outputDirectory = @"E:\\dilliram\puran\3\Convert";
-        string inputDirectory = @"E:\\dilliram\puran\3\";
+        string outputDirectory = @"D:\\Dvd extract\\Tirtha yatra\A\converted";
+        string inputDirectory = @"D:\\Dvd extract\\Tirtha yatra\A\";
         var inputFiles = new List<string>()
        {
-            $"{inputDirectory}7.vob",
-            $"{inputDirectory}8.vob",
-            $"{inputDirectory}9.vob",            
-            $"{inputDirectory}10.vob",            
+            $"{inputDirectory}1.vob",
+            $"{inputDirectory}2.vob",
+            $"{inputDirectory}3.vob",
+            $"{inputDirectory}4.vob",
+            $"{inputDirectory}5.vob"            
+            //$"{inputDirectory}6.vob"
+            /*$"{inputDirectory}7.vob",
+            $"{inputDirectory}8.vob"   */         
+            //$"{inputDirectory}9.vob",            
            // Add more VOB files as needed
        };
         Directory.CreateDirectory(outputDirectory);
