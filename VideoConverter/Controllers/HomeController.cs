@@ -32,5 +32,10 @@ namespace VideoConverter.Controllers
         {
             return View(new ErrorViewModel { RequestId = Activity.Current?.Id ?? HttpContext.TraceIdentifier });
         }
+
+        public IActionResult Convert()
+        {
+            throw new NotImplementedException();
+        }
     }
 }
