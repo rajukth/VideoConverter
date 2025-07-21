@@ -11,6 +11,7 @@
     <Content Remove="wwwroot\converted\**" />
     <EmbeddedResource Remove="wwwroot\converted\**" />
     <None Remove="wwwroot\converted\**" />
+    <Content Remove="Views\Vob\UploadedVideos.cshtml" />
   </ItemGroup>
 
   <ItemGroup>
