@@ -207,7 +207,12 @@ namespace VideoConverter.Controllers
                 };
 
                 await conversion.Start();
+                foreach(var inputFile in inputFiles)
+                {
+                    DeleteFile(inputFile);
+                } 
                 stopwatch.Stop();
+
                 _processingStatuses[taskId].ProgressText = $"Merging completed";
                 Debug.WriteLine("Merging completed!");
             }
