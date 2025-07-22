@@ -83,7 +83,7 @@ namespace VideoConverter.Controllers
                             }
                             await MergeAfterConversion(taskId, convertedFiles);
 
-                            zipFilePath = CreateZipFile(convertedFiles,taskId);
+                            zipFilePath = CreateZipFile(convertedFiles, taskId);
                             mergedFilePath = _processingStatuses[taskId].MergedFilePath;
                             status.ZipFilePath = zipFilePath;
                             status.MergedFilePath = mergedFilePath;
@@ -120,7 +120,7 @@ namespace VideoConverter.Controllers
             {
                 return Json(new
                 {
-                    progressText=status.ProgressText,
+                    progressText = status.ProgressText,
                     totalTime = status.TotalTime,
                     estimatedTime = status.EstimatedTime,
                     percentage = status.Percentage,
@@ -138,9 +138,18 @@ namespace VideoConverter.Controllers
         {
             try
             {
-                var conversion = await FFmpeg.Conversions.FromSnippet.Convert(inputFilePath, outputFilePath);
                 var stopwatch = new Stopwatch();
                 stopwatch.Start();
+
+                var conversion = FFmpeg.Conversions.New()
+                    .AddParameter($"-fflags +genpts", ParameterPosition.PreInput)
+                    .AddParameter($"-i \"{inputFilePath}\"", ParameterPosition.PreInput)
+                    .SetOutput(outputFilePath)
+                    .AddParameter("-c:v libx264")
+                    .AddParameter("-c:a aac")
+                    .AddParameter("-preset veryfast")
+                    .AddParameter("-movflags +faststart")
+                    .AddParameter("-avoid_negative_ts make_zero");
 
                 conversion.OnProgress += (sender, args) =>
                 {
@@ -151,8 +160,8 @@ namespace VideoConverter.Controllers
                     status.TotalTime = (long)estimatedTotal.TotalMilliseconds;
                     status.EstimatedTime = (long)(estimatedTotal - elapsed).TotalMilliseconds;
                     status.Percentage = percentComplete;
-                    status.ProgressText = $"Converting {Path.GetFileName(inputFilePath)}: [{args.Duration} / {args.TotalLength}] {args.Percent}% - Estimated time remaining: {estimatedTotal - elapsed:hh\\:mm\\:ss}";
-                    Debug.WriteLine($"Converting {Path.GetFileName(inputFilePath)}: [{args.Duration} / {args.TotalLength}] {args.Percent}% - Estimated time remaining: {estimatedTotal - elapsed:hh\\:mm\\:ss}");
+                    status.ProgressText = $"Converting {Path.GetFileName(inputFilePath)}: [{args.Duration} / {args.TotalLength}] {args.Percent}% - Estimated: {estimatedTotal - elapsed:hh\\:mm\\:ss}";
+                    Debug.WriteLine(status.ProgressText);
                 };
 
                 conversion.OnDataReceived += (sender, args) =>
@@ -164,13 +173,122 @@ namespace VideoConverter.Controllers
 
                 DeleteFile(inputFilePath);
                 stopwatch.Stop();
-                _processingStatuses[taskId].ProgressText=$"Conversion of {Path.GetFileName(inputFilePath)} completed!";
-                Debug.WriteLine($"Conversion of {Path.GetFileName(inputFilePath)} completed!");
+                _processingStatuses[taskId].ProgressText = $"Conversion of {Path.GetFileName(inputFilePath)} completed!";
+                Debug.WriteLine(_processingStatuses[taskId].ProgressText);
             }
             catch (Exception ex)
             {
-                Debug.WriteLine($"An error occurred during conversion of {Path.GetFileName(inputFilePath)}: {ex.Message}");
+                Debug.WriteLine($"Error during conversion of {Path.GetFileName(inputFilePath)}: {ex.Message}");
+                _processingStatuses[taskId].ProgressText = $"Failed to convert {Path.GetFileName(inputFilePath)}.";
             }
+        }
+
+        [HttpGet]
+        public IActionResult UploadedFiles()
+        {
+            var uploadPath = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", "uploads");
+            if (!Directory.Exists(uploadPath))
+            {
+                return Json(new List<string>()); // empty list if folder doesn't exist
+            }
+
+            var allowedExtensions = new[] { ".vob", ".avi", ".mov", ".mkv", ".mp4",".mpg",".mpeg",".m2p" }; // adjust as needed
+            var files = Directory.GetFiles(uploadPath)
+                .Where(f => allowedExtensions.Contains(Path.GetExtension(f).ToLower()))
+                .Select(f => Path.GetFileName(f))
+                .ToList();
+
+            return View(files);
+        }
+        [HttpPost]
+        public async Task<IActionResult> ConvertSelected([FromBody] FileSelectionModel model)
+        {
+            var uploadPath = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", "uploads");
+
+            // Validate files exist and get full paths
+            List<string> selectedFilePaths = new List<string>();
+            foreach (var fileName in model.FileNames)
+            {
+                var filePath = Path.Combine(uploadPath, fileName);
+                if (!System.IO.File.Exists(filePath))
+                {
+                    return BadRequest($"File {fileName} does not exist.");
+                }
+                selectedFilePaths.Add(filePath);
+            }
+
+            var taskId = Guid.NewGuid().ToString();
+            Directory.CreateDirectory(_outputDirectory);
+
+            var status = new ProcessingStatus();
+            _processingStatuses[taskId] = status;
+
+            _ = Task.Run(async () =>
+            {
+                List<string> convertedFiles = new List<string>();
+                string zipFilePath = string.Empty;
+                string mergedFilePath = string.Empty;
+
+                try
+                {
+                    switch (model.Action)
+                    {
+                        case "ConvertOnly":
+                            foreach (var inputFile in selectedFilePaths)
+                            {
+                                string outputFilePath = Path.Combine(_outputDirectory, Path.GetFileNameWithoutExtension(inputFile) + ".mp4");
+                                await ConvertVobToMp4(inputFile, outputFilePath, taskId);
+                                convertedFiles.Add(outputFilePath);
+                            }
+                            if (convertedFiles.Count == 1)
+                            {
+                                status.MergedFilePath = convertedFiles[0];
+                            }
+                            else
+                            {
+                                zipFilePath = CreateZipFile(convertedFiles, taskId);
+                                status.ZipFilePath = zipFilePath;
+                            }
+                            status.IsCompleted = true;
+                            break;
+
+                        case "ConvertAndMerge":
+                            foreach (var inputFile in selectedFilePaths)
+                            {
+                                string outputFilePath = Path.Combine(_outputDirectory, Path.GetFileNameWithoutExtension(inputFile) + ".mp4");
+                                await ConvertVobToMp4(inputFile, outputFilePath, taskId);
+                                convertedFiles.Add(outputFilePath);
+                            }
+                            await MergeAfterConversion(taskId, convertedFiles);
+
+                            zipFilePath = CreateZipFile(convertedFiles, taskId);
+                            mergedFilePath = _processingStatuses[taskId].MergedFilePath;
+                            status.ZipFilePath = zipFilePath;
+                            status.MergedFilePath = mergedFilePath;
+                            _processingStatuses[taskId].ProgressText = "Compressing to zip completed";
+                            status.IsCompleted = true;
+                            break;
+
+                        case "MergeOnly":
+                            string finalOutputFilePath = Path.Combine(_outputDirectory, $"out{Guid.NewGuid()}.mp4");
+                            await MergeMp4Files(selectedFilePaths, finalOutputFilePath, taskId);
+                            status.MergedFilePath = finalOutputFilePath;
+                            status.IsCompleted = true;
+                            break;
+
+                        default:
+                            status.IsCompleted = true;
+                            break;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Debug.WriteLine($"An error occurred during processing: {ex.Message}");
+                    status.IsCompleted = true;
+                }
+            });
+
+            return Json(new { message = "Processing started.", taskId });
         }
 
         private async Task MergeMp4Files(List<string> inputFiles, string outputFilePath, string taskId)
