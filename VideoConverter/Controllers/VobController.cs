@@ -17,11 +17,39 @@ namespace VideoConverter.Controllers
     public class VobController : Controller
     {
         private readonly string _outputDirectory = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", "converted");
+        private readonly string _uploadDirectory = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", "uploads");
         private static readonly ConcurrentDictionary<string, ProcessingStatus> _processingStatuses = new ConcurrentDictionary<string, ProcessingStatus>();
 
         public IActionResult Index()
         {
             return View();
+        }
+
+        public IActionResult ConvertWithImage()
+        {
+            return View();
+        }
+        [HttpPost]
+        public async Task<IActionResult> ProcessConvertWithImageAsync(VideoProcessingModel model)
+        {
+            var taskId = Guid.NewGuid().ToString();
+            Directory.CreateDirectory(_uploadDirectory);
+            List<string> uploadedFilePaths = new List<string>();
+            foreach (var formFile in model.Files)
+            {
+                if (formFile.Length > 0)
+                {
+                    var filePath = Path.Combine(_uploadDirectory, Path.GetFileName(formFile.FileName));
+                    using (var stream = new FileStream(filePath, FileMode.Create))
+                    {
+                        await formFile.CopyToAsync(stream);
+                    }
+                    uploadedFilePaths.Add(filePath);
+                }
+            }
+            var status = new ProcessingStatus();
+            _processingStatuses[taskId] = status;
+            return Json(new { message = "Processing started.", taskId });
         }
 
         [HttpPost]
