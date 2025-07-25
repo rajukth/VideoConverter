@@ -8,8 +8,25 @@
         </select>
         <button type="submit">Upload</button>
     </form>
+    <div id="progress" style="max-height:100vh; overflow:auto;"></div>
 </div>
-<div id="progress" style="max-height:100vh; overflow:auto;"></div>
+<div class="card">
+    @if (Model.Count == 0)
+    {
+        <p>No files uploaded yet.</p>
+    }
+    else
+    {
+        <ul>
+            @foreach (var file in Model)
+            {
+                <li>
+                    <a href="@Url.Content("~/uploads/" + file)" target="_blank">@file</a>
+                </li>
+            }
+        </ul>
+    }
+</div>
 <script>
     $(document).ready(function () {
         $('#videoForm').submit(function (e) {

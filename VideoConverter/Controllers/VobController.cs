@@ -27,7 +27,15 @@ namespace VideoConverter.Controllers
 
         public IActionResult ConvertWithImage()
         {
-            return View();
+            if (!Directory.Exists(_uploadDirectory))
+                Directory.CreateDirectory(_uploadDirectory);
+
+            var files = Directory
+                .GetFiles(_uploadDirectory)
+                .Select(Path.GetFileName)
+                .ToList();
+
+            return View(files);
         }
         [HttpPost]
         public async Task<IActionResult> ProcessConvertWithImageAsync(VideoProcessingModel model)
@@ -281,18 +289,19 @@ namespace VideoConverter.Controllers
                             break;
 
                         case "ConvertAndMerge":
+                            // Normalize all videos to 1920x1080 landscape
                             foreach (var inputFile in selectedFilePaths)
                             {
-                                string outputFilePath = Path.Combine(_outputDirectory, Path.GetFileNameWithoutExtension(inputFile) + ".mp4");
-                                await ConvertVobToMp4(inputFile, outputFilePath, taskId);
-                                convertedFiles.Add(outputFilePath);
+                                var normalized = await NormalizeToLandscape(inputFile, taskId);
+                                convertedFiles.Add(normalized);
                             }
-                            await MergeAfterConversion(taskId, convertedFiles);
 
-                            zipFilePath = CreateZipFile(convertedFiles, taskId);
-                            mergedFilePath = _processingStatuses[taskId].MergedFilePath;
+                            string finalMergedPath = Path.Combine(_outputDirectory, $"merged_{taskId}.mp4");
+                            await MergeNormalizedVideos(convertedFiles, finalMergedPath, taskId);
+
+                            zipFilePath = CreateZipFile(convertedFiles, taskId); // Optional
+                            status.MergedFilePath = finalMergedPath;
                             status.ZipFilePath = zipFilePath;
-                            status.MergedFilePath = mergedFilePath;
                             _processingStatuses[taskId].ProgressText = "Compressing to zip completed";
                             status.IsCompleted = true;
                             break;
@@ -318,55 +327,97 @@ namespace VideoConverter.Controllers
 
             return Json(new { message = "Processing started.", taskId });
         }
+        
+        public async Task<string> NormalizeToLandscape(string inputPath, string taskId)
+        {
+            var outputPath = Path.Combine(_outputDirectory, $"{Path.GetFileNameWithoutExtension(inputPath)}_landscape.mp4");
+
+            IMediaInfo mediaInfo = await FFmpeg.GetMediaInfo(inputPath);
+            var videoStream = mediaInfo.VideoStreams.First();
+            int width = videoStream.Width;
+            int height = videoStream.Height;
+
+            string filter = width < height
+                ? "transpose=1,scale=1920:1080,setsar=1" // Portrait -> rotate clockwise
+                : "scale=1920:1080,setsar=1";            // Already landscape
+
+            var conversion = FFmpeg.Conversions.New()
+                .AddParameter($"-i \"{inputPath}\"", ParameterPosition.PreInput)
+                .AddParameter($"-vf \"{filter}\"")
+                .AddParameter("-c:v libx264 -preset veryfast -crf 23 -pix_fmt yuv420p")
+                .AddParameter("-c:a aac -strict experimental")
+                .SetOutput(outputPath)
+                .SetOverwriteOutput(true);
+
+            _processingStatuses[taskId].ProgressText = $"Normalizing {Path.GetFileName(inputPath)}";
+            await conversion.Start();
+
+            return outputPath;
+        }
+        public async Task MergeNormalizedVideos(List<string> inputFiles, string outputFilePath, string taskId)
+        {
+            // First normalize all videos
+            var normalizedVideos = new List<string>();
+            foreach (var file in inputFiles)
+            {
+                var normalized = await NormalizeToLandscape(file, taskId);
+                normalizedVideos.Add(normalized);
+            }
+
+            // Create a text file listing all inputs for concat
+            var concatListPath = Path.Combine(_outputDirectory, $"concat_{taskId}.txt");
+            await System.IO.File.WriteAllLinesAsync(concatListPath, normalizedVideos.Select(path => $"file '{path.Replace("\\", "/")}'"));
+
+            var conversion = FFmpeg.Conversions.New()
+                .AddParameter($"-f concat -safe 0 -i \"{concatListPath}\"", ParameterPosition.PreInput)
+                .AddParameter("-c copy")
+                .SetOutput(outputFilePath)
+                .SetOverwriteOutput(true);
+
+            _processingStatuses[taskId].ProgressText = "Merging videos...";
+            await conversion.Start();
+
+            _processingStatuses[taskId].MergedFilePath = outputFilePath;
+        }
+
 
         private async Task MergeMp4Files(List<string> inputFiles, string outputFilePath, string taskId)
         {
+            var listFilePath = Path.Combine(Path.GetTempPath(), $"concat_{Guid.NewGuid()}.txt");
             try
             {
-                var conversion = FFmpeg.Conversions.New();
-                var stopwatch = new Stopwatch();
-                stopwatch.Start();
+                var lines = inputFiles.Select(path => $"file '{path.Replace("\\", "/")}'");
+                await System.IO.File.WriteAllLinesAsync(listFilePath, lines);
 
-                foreach (var inputFile in inputFiles)
+                var conversion = FFmpeg.Conversions.New()
+                    .AddParameter($"-f concat -safe 0 -i \"{listFilePath}\" -c copy \"{outputFilePath}\"");
+
+                var stopwatch = Stopwatch.StartNew();
+
+                conversion.OnProgress += (s, args) =>
                 {
-                    conversion.AddParameter($"-i \"{inputFile}\"");
-                }
-
-                conversion.AddParameter($"-filter_complex \"concat=n={inputFiles.Count}:v=1:a=1 [v] [a]\" -map \"[v]\" -map \"[a]\" \"{outputFilePath}\"");
-
-                conversion.OnProgress += (sender, args) =>
-                {
-                    double percentComplete = args.Percent == 0 ? 1 : args.Percent;
+                    double percent = args.Percent == 0 ? 1 : args.Percent;
                     TimeSpan elapsed = stopwatch.Elapsed;
-                    TimeSpan estimatedTotal = TimeSpan.FromSeconds(elapsed.TotalSeconds / percentComplete * 100);
-                    var status = _processingStatuses[taskId];
-                    status.TotalTime = (long)estimatedTotal.TotalMilliseconds;
-                    status.EstimatedTime = (long)(estimatedTotal - elapsed).TotalMilliseconds;
-                    status.Percentage = percentComplete;
-                    status.ProgressText = $"Merging files: [{args.Duration} / {args.TotalLength}] {args.Percent}% - Estimated time remaining: {estimatedTotal - elapsed:hh\\:mm\\:ss}";
-                    Debug.WriteLine($"Merging files: [{args.Duration} / {args.TotalLength}] {args.Percent}% - Estimated time remaining: {estimatedTotal - elapsed:hh\\:mm\\:ss}");
-                };
-
-                conversion.OnDataReceived += (sender, args) =>
-                {
-                    Debug.WriteLine(args.Data);
+                    TimeSpan estimatedTotal = TimeSpan.FromSeconds(elapsed.TotalSeconds / percent * 100);
+                    _processingStatuses[taskId].TotalTime = (long)estimatedTotal.TotalMilliseconds;
+                    _processingStatuses[taskId].EstimatedTime = (long)(estimatedTotal - elapsed).TotalMilliseconds;
+                    _processingStatuses[taskId].Percentage = percent;
+                    _processingStatuses[taskId].ProgressText = $"Merging: {percent}%";
                 };
 
                 await conversion.Start();
-                foreach(var inputFile in inputFiles)
-                {
-                    DeleteFile(inputFile);
-                } 
-                stopwatch.Stop();
 
-                _processingStatuses[taskId].ProgressText = $"Merging completed";
-                Debug.WriteLine("Merging completed!");
+                // Clean up
+                DeleteFile(listFilePath);
+                inputFiles.ForEach(DeleteFile);
+                _processingStatuses[taskId].ProgressText = "Merging completed";
             }
             catch (Exception ex)
             {
-                Debug.WriteLine($"An error occurred during merging: {ex.Message}");
+                Debug.WriteLine($"An error occurred: {ex.Message}");
             }
         }
+
 
         private async Task MergeAfterConversion(string taskId, List<string> convertedFiles)
         {
@@ -383,9 +434,7 @@ namespace VideoConverter.Controllers
         }
         private void DeleteFile(string filePath)
         {
-            
                 System.IO.File.Delete(filePath);
-            
         }
         // Method to create a zip file from the converted files
         private string CreateZipFile(List<string> files,string taskId)
