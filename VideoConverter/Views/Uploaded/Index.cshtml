@@ -1,0 +1,221 @@
+﻿@model List<string>
+@{
+    ViewData["Title"] = "Upload and Merge Videos";
+}
+
+<h2>Upload Videos</h2>
+
+<form asp-action="Upload" method="post" enctype="multipart/form-data">
+    <input type="file" name="files" multiple accept="video/*" />
+    <button type="submit">Upload</button>
+</form>
+
+@if (TempData["Error"] != null)
+{
+    <div style="color:red">@TempData["Error"]</div>
+}
+@if (TempData["Success"] != null)
+{
+    <div style="color:green">@TempData["Success"]</div>
+}
+@if (TempData["MergedFile"] != null)
+{
+    <div style="margin-top: 15px;">
+        <strong>Merged Output:</strong><br />
+        <video width="640" controls>
+            <source src="/merged/@TempData["MergedFile"]" type="video/mp4" />
+        </video>
+    </div>
+}
+
+@if (Model.Any())
+{
+    <h3>Uploaded Videos (Select & Drag to Reorder)</h3>
+
+    <form onsubmit="return handleMergeSubmit(event)">
+
+       <div id="videoGrid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px;">
+    @foreach (var file in Model)
+            {
+                var fileName = System.IO.Path.GetFileName(file);
+                <div class="video-item" style="width: 150px; border: 1px solid #ccc; padding: 5px;" data-path="@file">
+                    <input type="checkbox" class="video-checkbox" checked/>
+                    <span class="selection-number"></span>
+                    <video class="preview" width="120" height="80" preload="metadata" muted>
+                        <source src="/uploads/@fileName" type="video/mp4">
+                    </video>
+                    <div class="name" style="font-size: 0.75em; text-align: center;">@fileName</div>
+                    <div class="duration" style="font-size: 0.75em; text-align: center;">Loading...</div>
+                    <div class="filesize" style="font-size: 0.75em; text-align: center;">...</div>
+                </div>
+            }
+        </div>
+
+        <input type="hidden" name="orderedFiles" id="orderedFiles" />
+       <div style="margin-top: 10px;">
+           <strong>Selected:</strong> <span id="selectedCount">0</span>,
+           <strong>Total Duration:</strong> <span id="totalDuration">0:00</span>,
+           <strong>Total Size:</strong> <span id="totalSize">0 MB</span>
+       </div>
+        <button type="submit" style="margin-top: 10px;">Merge Selected Videos</button>
+    </form>
+}
+
+<div id="overlay" style="display:none; position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.6); z-index:9999; color:white; text-align:center; padding-top:200px;">
+    <h3 id="progressText">Initializing...</h3>
+    <div style="width:50%; margin:auto; background:#444; border-radius:5px;">
+        <div id="progressBar" style="width:0%; height:20px; background:limegreen; transition:0.3s;"></div>
+    </div>
+</div>
+<style>
+    .video-item.selected {
+        border: 2px solid limegreen;
+        background-color: #f3fff3;
+    }
+</style>
+<script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/microsoft-signalr/7.0.5/signalr.min.js"></script>
+
+<script>
+    const grid = document.getElementById('videoGrid');
+    const selectedCountSpan = document.getElementById('selectedCount');
+    const totalDurationSpan = document.getElementById('totalDuration');
+
+    Sortable.create(grid, {
+        animation: 150,
+        draggable: '.video-item'
+    });
+async function handleMergeSubmit(event) {
+   event.preventDefault(); // prevent actual form submit
+   
+       prepareFileOrder();
+       const ordered = JSON.parse(document.getElementById('orderedFiles').value);
+   
+       if (ordered.length < 2) {
+           alert("Please select at least two videos to merge.");
+           return false;
+       }
+   
+       const overlay = document.getElementById('overlay');
+       overlay.style.display = 'block';
+   
+       await fetch('/Uploaded/Merge', {
+           method: 'POST',
+           headers: { 'Content-Type': 'application/json' },
+           body: JSON.stringify(ordered)
+       });
+   
+       return true;
+}
+    function formatDuration(seconds) {
+        const mins = Math.floor(seconds / 60);
+        const secs = Math.floor(seconds % 60).toString().padStart(2, '0');
+        return `${mins}:${secs}`;
+    }
+
+    function updateSelectionStats() {
+        const items = Array.from(document.querySelectorAll('.video-item'));
+        let count = 0;
+        let totalSeconds = 0;
+        let totalSize=0;
+
+        items.forEach((item, index) => {
+            const checkbox = item.querySelector('.video-checkbox');
+            const label = item.querySelector('.selection-number');
+
+            if (checkbox.checked) {
+                count++;
+                const video = item.querySelector('video');
+                totalSeconds += video.duration || 0;
+                totalSize += parseFloat(item.dataset.size || 0);
+                label.textContent = count;
+                item.classList.add('selected');
+            } else {
+                label.textContent = '';
+                item.classList.remove('selected');
+            }
+        });
+
+        selectedCountSpan.textContent = count;
+        totalDurationSpan.textContent = formatDuration(totalSeconds);
+        document.getElementById('totalSize').textContent = `${totalSize.toFixed(2)} MB`;
+    }
+
+    function prepareFileOrder() {
+        const ordered = Array.from(document.querySelectorAll('.video-item'))
+            .filter(item => item.querySelector('.video-checkbox').checked)
+            .map(item => item.dataset.path);
+
+        document.getElementById('orderedFiles').value = JSON.stringify(ordered);
+    }
+
+    // Load durations and set up event listeners
+    document.addEventListener('DOMContentLoaded', () => {
+        const items = document.querySelectorAll('.video-item');
+
+        items.forEach(item => {
+            const video = item.querySelector('video');
+            const durationDiv = item.querySelector('.duration');
+            const checkbox = item.querySelector('.video-checkbox');
+
+            video.onloadedmetadata = () => {
+                durationDiv.textContent = formatDuration(video.duration);
+                updateSelectionStats();
+            };
+fetch(video.querySelector('source').src, { method: 'HEAD' })
+    .then(res => {
+        const sizeBytes = res.headers.get('Content-Length');
+        if (sizeBytes) {
+            const sizeMB = (+sizeBytes / (1024 * 1024)).toFixed(2);
+            item.dataset.size = sizeMB;
+            item.querySelector('.filesize').textContent = `${sizeMB} MB`;
+            updateSelectionStats();
+        }
+    });
+            checkbox.addEventListener('change', updateSelectionStats);
+        });
+    });
+</script>
+<script>
+   document.addEventListener('DOMContentLoaded', () => {
+       const overlay = document.getElementById('overlay');
+       const progressText = document.getElementById('progressText');
+       const progressBar = document.getElementById('progressBar');
+   
+       const connection = new signalR.HubConnectionBuilder()
+           .withUrl("/progressHub")
+           .build();
+   
+       connection.on("UpdateProgress", data => {
+           overlay.style.display = 'block';
+           progressText.textContent = data.message;
+           progressBar.style.width = `${data.progress}%`;
+       
+           if (data.progress >= 100 && data.file) {
+               setTimeout(() => {
+                   overlay.style.display = 'none';
+                   alert("Converted successfully!");
+       
+                   const a = document.createElement('a');
+                   a.href = data.file;
+                   a.download = '';
+                   document.body.appendChild(a);
+                   a.click();
+                   document.body.removeChild(a);
+       
+                   // Optional delete
+                   setTimeout(() => {
+                       fetch('/Uploaded/DeleteMergedFile', {
+                           method: 'POST',
+                           headers: { 'Content-Type': 'application/json' },
+                           body: JSON.stringify(data.file)
+                       });
+                   }, 10000);
+               }, 1000);
+           }
+       });
+
+   
+       connection.start().catch(err => console.error("SignalR error:", err));
+   });
+</script>

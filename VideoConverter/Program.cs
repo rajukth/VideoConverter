@@ -3,6 +3,12 @@ using VideoConverter.Hubs;
 using Xabe.FFmpeg;
 using Xabe.FFmpeg.Downloader;
 
+
+// Configure FFmpeg binaries path
+var ffmpegPath = Path.Combine(Directory.GetCurrentDirectory(), "ffmpeg-binaries");
+Directory.CreateDirectory(ffmpegPath); // Ensure the directory exists
+await FFmpegDownloader.GetLatestVersion(FFmpegVersion.Official, ffmpegPath);
+FFmpeg.SetExecutablesPath(ffmpegPath);
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.Configure<FormOptions>(options =>
@@ -13,12 +19,10 @@ builder.Services.Configure<FormOptions>(options =>
 // Add services to the container.
 builder.Services.AddControllersWithViews();
 builder.Services.AddSignalR();
+
 var app = builder.Build();
-// Configure FFmpeg binaries path
-var ffmpegPath = Path.Combine(Directory.GetCurrentDirectory(), "ffmpeg-binaries");
-Directory.CreateDirectory(ffmpegPath); // Ensure the directory exists
-await FFmpegDownloader.GetLatestVersion(FFmpegVersion.Official, ffmpegPath);
-FFmpeg.SetExecutablesPath(ffmpegPath);
+app.MapHub<ProgressHub>("/progressHub");
+
 // Configure the HTTP request pipeline.
 if (!app.Environment.IsDevelopment())
 {
