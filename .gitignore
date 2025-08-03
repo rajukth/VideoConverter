@@ -366,3 +366,4 @@ FodyWeavers.xsd
 /VideoConverter/ffmpeg-binaries/version.json
 /VideoConverter/wwwroot/converted/
 /VideoConverter/wwwroot/uploades/
+/VideoConverter/wwwroot/merged/
